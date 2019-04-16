@@ -650,3 +650,106 @@ object DonutPromise extends App {
 	p4.complete(Try(donutStock("glazed donut", 0)))
 	println("P4 = " + p4)
 }
+
+
+
+object RecoverFuture extends App {
+
+	import DonutFutureExample._
+
+	def donutStock(donutName: String, count: Int ): Future[Donut] = Future {
+		//long running database operation
+		Thread.sleep(100)
+		println("- checking donut stock ... sleep for a bit")
+
+		if(count > 0){
+			Donut(donutName, count) //even iff zero, todo
+		} else throw new IllegalStateException("Out of stock")
+	}
+
+
+	var goodDonut: Future[Donut] = donutStock("vanilla donut", 10)
+	goodDonut = Wait.hangOnS(goodDonut)
+
+	var badDonut: Future[Donut] = donutStock("donut", 0)
+	badDonut = Wait.hangOnS(badDonut, msg ="Bad donut")
+
+	val recoveredDonut: Future[Any] = badDonut.recover { case e: IllegalStateException => 0 }
+	Wait.hangOnS(recoveredDonut, msg = "Recovered")
+}
+
+
+
+/*recover:
+
+def recover[U >: T](pf: PartialFunction[Throwable, U])
+recoverWith:
+
+def recoverWith[U >: T](pf: PartialFunction[Throwable, Future[U]])*/
+
+object RecoverWithFuture extends App {
+
+	import DonutFutureExample._
+
+	def donutStock(donutName: String, count: Int ): Future[Donut] = Future {
+		//long running database operation
+		Thread.sleep(100)
+		println("- checking donut stock ... sleep for a bit")
+
+		if(count > 0){
+			Donut(donutName, count) //even iff zero, todo
+		} else throw new IllegalStateException("Out of stock")
+	}
+
+
+	var goodDonut: Future[Donut] = donutStock("vanilla donut", 10)
+	goodDonut = Wait.hangOnS(goodDonut, msg= "Good donut: ")
+
+	var badDonut: Future[Donut] = donutStock("donut", 0)
+	badDonut = Wait.hangOnS(badDonut, msg ="Bad donut: ")
+
+	//the only difference from recover is to return a future
+	val recoveredDonut: Future[Any] = badDonut.recover { case e: IllegalStateException => 0 } //Future(Success(0))
+	Wait.hangOnS(recoveredDonut, msg = "Recovered: ")
+
+
+	val recoveredWithFutureDonut: Future[Object] = badDonut.recover {
+		case e: IllegalStateException => Future.successful(0) //Future(Success(Future(Success(0))))
+	}
+	Wait.hangOnS(recoveredWithFutureDonut, msg = "Recovered with: ")
+}
+
+
+//Fallback allows you to give method to use in case of failure
+object FallbackFuture extends App {
+
+	import DonutFutureExample._
+
+	def donutStock(donutName: String, count: Int ): Future[Donut] = Future {
+		//long running database operation
+		Thread.sleep(100)
+		println("- checking donut stock ... sleep for a bit")
+
+		if(count > 0){
+			Donut(donutName, count) //even iff zero, todo
+		} else throw new IllegalStateException("Out of stock")
+	}
+
+	//note: returns future donut to be similar to above
+	def similarDonutStock(donut: Donut): Future[Donut] = Future {
+		println(s"- replacing donut stock from similar donut = $donut")
+		if(donut.name == "vanilla donut") Donut(donut.name, 20) else Donut(donut.name, 5)
+	}
+
+	var goodDonut: Future[Donut] = donutStock("vanilla donut", 10)
+	goodDonut = Wait.hangOnS(goodDonut, msg= "Good donut: ")
+
+	var badDonut: Future[Donut] = donutStock("donut", 0)
+	badDonut = Wait.hangOnS(badDonut, msg ="Bad donut: ")
+
+	//the only difference from recover is to return a future
+	val fallbackDonut: Future[Any] = badDonut.fallbackTo(similarDonutStock(Donut("vanilla donut", 133)))
+	Wait.hangOnS(fallbackDonut, msg = "Fallback: ")
+
+
+}

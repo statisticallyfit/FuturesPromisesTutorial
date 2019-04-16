@@ -14,7 +14,7 @@ import scala.util.{Success, Failure}
   *
   */
 object Wait {
-	def hangOnS[T](future: Future[T], start: Int = 0): Future[T] = {
+	def hangOnS[T](future: Future[T], start: Int = 0,msg: String = ""): Future[T] = {
 		var count = start
 		while(!future.isCompleted){
 			println(s"Slept $count times")
@@ -30,7 +30,7 @@ object Wait {
 			//case s@Success(_) => println(s"Future($s)")
 			//case f@Failure(_) => println(s"Future($f)")
 		}*/
-		println(future)
+		println(s"$msg $future")
 
 		future
 	}
