@@ -1,4 +1,4 @@
-package Blogs.FutureExample
+package Blogs.CoffeeFutureExample
 
 import scala.util.Try
 

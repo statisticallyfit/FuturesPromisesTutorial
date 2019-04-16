@@ -1,10 +1,8 @@
-package Blogs.FutureExample
+package Blogs.CoffeeFutureExample
 
 /**
   *https://danielwestheide.com/blog/2013/01/09/the-neophytes-guide-to-scala-part-8-welcome-to-the-future.html
   */
-
-import Blogs.FutureExample.CoffeeSequentialExample.GrindingException
 
 import scala.concurrent.future
 import scala.concurrent.Future
@@ -13,6 +11,8 @@ import scala.concurrent.duration._
 import scala.util.Random
 import scala.util.{Success, Failure}
 
+
+import util.Wait
 
 /**
   * Future[T] is a container type, representing a computation that is supposed to
@@ -76,6 +76,11 @@ object CoffeeFutureExample {
 
 	def combine(espresso: Espresso, frothedMilk: FrothedMilk): Cappuccino = "cappuccino"
 
+	case class GrindingException(msg: String) extends Exception(msg)
+	case class FrothingException(msg: String) extends Exception(msg)
+	case class WaterBoilingException(msg: String) extends Exception(msg)
+	case class BrewingException(msg: String) extends Exception(msg)
+
 	//NOTE: apply method requires two arguments:
 	/**
 	  * body = the computation to be computed asynchronously is passed in as the body parameter
@@ -95,25 +100,7 @@ object CoffeeFutureExample {
 
 
 
-object Wait {
-	def hangOn[T](future: Future[T], start: Int = 0) = {
-		var count = start
-		while(!future.isCompleted){
-			println(s"Slept $count times")
 
-			Thread.sleep(5)
-			count += 1
-		}
-
-		/*future.onComplete{
-			case s@Success(_) => println(s"$s")
-			case f@Failure(_) => println(s"$f")
-		}*/
-		println(future)
-
-		future
-	}
-}
 
 object GrindUseCase extends App {
 
@@ -126,24 +113,24 @@ object GrindUseCase extends App {
 	println("First coffee!")
 
 	val futureGrind: Future[GroundCoffee] = grind("arabica beans")
-	Wait.hangOn(futureGrind)
+	Wait.hangOnS(futureGrind)
 
 	// ------------------------------
 
 	println("Second coffee!")
 
 	val futureGrind2: Future[GroundCoffee] = grind("baked beans")
-	Wait.hangOn(futureGrind2)
+	Wait.hangOnS(futureGrind2)
 
 }
 
 
-object WaterTempUseCase extends App {
+object MapUseCase extends App {
 	import CoffeeFutureExample._
 
 	val hot: Future[Water] = heatWater(Water(25))
 
-	Wait.hangOn(hot)
+	Wait.hangOnS(hot)
 
 	//check water temp is ok after heating
 	val temperatureOkay: Future[Boolean] = hot.map{ water =>
@@ -151,7 +138,7 @@ object WaterTempUseCase extends App {
 		(80 to 85).contains(water.temperature)
 	}
 
-	Wait.hangOn(temperatureOkay)
+	Wait.hangOnS(temperatureOkay) //help why never print the last one?
 
 }
 
@@ -160,19 +147,19 @@ object FlatMapFuture extends App {
 
 
 	val hot: Future[Water] = heatWater(Water(25))
-	Wait.hangOn(hot)
+	Wait.hangOnS(hot)
 
 	val nestedFuture: Future[Future[Boolean]] = hot.map { water =>
 		//Wait.hangOn(checkTemperature(water))
 		checkTemperature(water)
 	}
-	Wait.hangOn(nestedFuture)
+	Wait.hangOnS(nestedFuture)
 	//help question: how come when hangOn() has shorter milliseconds, we get the not completed
 	//help future for nestedFuture in the console? How come when increasing the miillis time
 	// help that the nestedFuture completes?
 
 	val flatFuture: Future[Boolean] = hot.flatMap(water => checkTemperature(water))
-	Wait.hangOn(flatFuture)
+	Wait.hangOnS(flatFuture)
 }
 
 
@@ -186,7 +173,7 @@ object ForComprehensionFuture extends App {
 		okay <- checkTemperature(hot)
 	} yield okay
 
-	Wait.hangOn(acceptable)
+	Wait.hangOnS(acceptable)
 	//todo: do we need to wrap each future in the for loop with the hangOn()?
 
 	//println(acceptable)
@@ -209,5 +196,5 @@ object ForComprehensionFuture_Capp extends App {
 	}
 
 	val cap: Future[Cappuccino] = prepareCapuccinoSequentially()
-	Wait.hangOn(cap)
+	Wait.hangOnS(cap)
 }
