@@ -5,7 +5,8 @@ package Blogs.DonutFutureExample
   */
 
 
-import scala.concurrent.ExecutionContext.Implicits.global //places default thread pool in scope so Future can be
+import scala.concurrent.ExecutionContext.Implicits.global
+import scala.util.Try //places default thread pool in scope so Future can be
 // executed asynchronously.
 import scala.concurrent.{Await, Future, Promise, future}
 import scala.concurrent.duration._
@@ -436,35 +437,216 @@ object ZipFutureOption extends App {
 	}
 
 	def from(future: Future[Option[Donut]]): Int = {
-		var qtyFromFuture = 0
+		//var qtyFromFuture = 0
+		val futureValue: Option[Donut] = Await.result(future, Duration.Inf)
 
-		//help why does onComplete never work???
+		futureValue match {
+			case Some(Donut(_, q)) => q
+			case _ => 0
+		}
+		//note this will never work because we have to pass the exact futurevalue that we awaited from, not the
+		// future argument, which may pass us by.
 		/*future.onComplete {
 			case Success(Some(Donut(_, q))) => {
-				qtyFromFuture = q
+				qtyFromFuture += q
 			}
 			case _ => 0
 		}*/
-		//help why doesn't this work?
-		if(future.isCompleted){
-			future.onComplete {
-				case Success(Some(Donut(_, q))) => {
-					qtyFromFuture = q
-				}
-				case _ => 0
-			}
-		}
-		qtyFromFuture
 	}
 
 	def donutPrice(d: Future[Option[Donut]]): Future[Double] = Future.successful(3.25 * from(d))
 
-	val futureDonut: Future[Option[Donut]] = donutStock("sprinkles donut", 4)
-	Wait.hangOnS(futureDonut)
 
-	val futurePrice: Future[Double] = donutPrice(futureDonut)
+
+	val futureDonut: Future[Option[Donut]] = donutStock("sprinkles donut", 4)
+	val futurePrice: Future[Double] = donutPrice(futureDonut) //inside the method, await the result
 	Wait.hangOnS(futurePrice)
 
-	val donutAndPriceOperation = futureDonut zip futurePrice
+	val donutAndPriceOperation: Future[(Option[Donut], Double)] = futureDonut zip futurePrice
 	Wait.hangOnS(donutAndPriceOperation)
+}
+
+
+/**
+  * ZipWith: combines results of two futures and allows you to pass through
+  * a function which can be applied to the results.
+  */
+object ZipWithFutureOption extends App {
+
+	import DonutFutureExample._
+
+	def donutStock(donutName: String, count: Int ): Future[Option[Donut]] = Future {
+		//long running database operation
+		Thread.sleep(100)
+		println("- checking donut stock ... sleep for a bit")
+
+		count match {
+			case 0 => None
+			case n => Some(Donut(donutName, n))
+		}
+	}
+
+	def donutPrice(): Future[Double] = Future.successful(3.25)
+
+
+
+	val futureDonut: Future[Option[Donut]] = donutStock("sprinkles donut", 4)
+	val futurePrice: Future[Double] = donutPrice() //inside the method, await the result
+
+
+	//define a value function to convert Tuple (Option[Int], Double) to
+	// (Int, Double)
+	val qtyAndPrice: (Option[Donut], Double) => (Int, Double) =
+		(optDonut, price) => (optDonut.getOrElse(Donut("", 0)).howMany, price)
+
+
+	Wait.hangOnS(futureDonut)
+	Wait.hangOnS(futurePrice)
+
+
+	//zipwith and pass-through function
+	val donutAndPriceOperation = futureDonut.zipWith(futurePrice)(qtyAndPrice)
+	Wait.hangOnS(donutAndPriceOperation)
+}
+
+
+/**
+  * AndThen is used when need to apply a side effect function on the value
+  * returned by the future.
+  */
+object AndThenFuture extends App {
+
+	import DonutFutureExample._
+
+	def donutStock(donutName: String, count: Int ): Future[Donut] = Future {
+		//long running database operation
+		Thread.sleep(100)
+		println("- checking donut stock ... sleep for a bit")
+
+		Donut(donutName, count) //even iff zero, todo
+	}
+
+	//call future and then with a partial function
+	val donutOperation: Future[Donut] = donutStock("vanilla donut", 12)
+	Wait.hangOnS(donutOperation)
+
+	donutOperation.andThen {
+		case qty => { //note: qty has type Try(Donut)
+			println(s"Donut stock qty = $qty")
+			println("Printing overall future: " + donutOperation)
+		}
+	}
+}
+
+
+
+
+
+object ConfigureThreadpool extends App {
+	import DonutFutureExample._
+
+	def donutStock(donutName: String, count: Int ): Future[Donut] = Future {
+		//long running database operation
+		Thread.sleep(100)
+		println("- checking donut stock ... sleep for a bit")
+
+		Donut(donutName, count) //even iff zero, todo
+	}
+
+
+
+
+	import java.util.concurrent.Executors
+
+	val executor = Executors.newSingleThreadExecutor() //single thread pool executor
+
+	//placing the executor within scope
+	implicit val ec = scala.concurrent.ExecutionContext.fromExecutor(executor)
+
+	//call donut maker and register the oncomplete callback to get the result
+	// of the future operation
+	val donutOperation: Future[Donut] = donutStock("glazed donut", 3)
+	//Wait.hangOnS(donutOperation)
+	//println(donutOperation)
+	Wait.hangOnS(donutOperation)
+
+	executor.shutdownNow()
+}
+
+
+
+
+
+object DonutPromise extends App {
+	import DonutFutureExample._
+
+	def donutStock(donutName: String, count: Int ): Donut = {
+		//long running database operation
+		Thread.sleep(100)
+		println("- checking donut stock ... sleep for a bit")
+
+		if(count > 0){
+			Donut(donutName, count) //even iff zero, todo
+		} else throw new IllegalStateException("Out of stock")
+	}
+
+
+
+	//Define promise
+	val p1: Promise[Donut] = Promise[Donut]()
+	//define future from promise
+	val f1: Future[Donut] = p1.future
+
+	val p2: Promise[Donut] = Promise[Donut]()
+	//define future from promise
+	val f2: Future[Donut] = p2.future
+
+
+	val p3: Promise[Donut] = Promise[Donut]()
+
+	//define future from promise
+	val f3: Future[Donut] = p3.future
+
+
+	val p4: Promise[Donut] = Promise[Donut]()
+	//define future from promise
+	val f4: Future[Donut] = p4.future
+
+	//Wait.hangOnS(futureDonut)
+	println(p1)
+	println(f1)
+
+
+	//Use promise.success or promise.failure to control execution of future
+	//val d1: Donut = donutStock("sprinkles donut", 22)
+
+	println("\nThe success case: ")
+	p1.success(donutStock("sprinkles donut", 22))
+	println(p1)
+
+	//failure case
+	//val d2: Donut = donutStock("glazed donut", 0)
+	 //failure needs throwable type.
+	println("\nThe bad case: ")
+	p2.failure(Try(donutStock("glazed donut", 0)).failed.get)
+	println(p2)
+
+
+	// Or can complete a promise with complete()
+	println("\nThe complete case: (success): ")
+	f3.onComplete {
+		case Success(donut) => println(s"Stock is = $donut")
+		case Failure(e) => println(s"Could not find this donut, exception: ${e.getMessage}")
+	}
+	p3.complete(Try(donutStock("cherry donut", 18)))
+	println("P3 = " + p3)
+
+
+	println("\nThe complete case: (fail)")
+	f4.onComplete {
+		case Success(donut) => println(s"Stock is = $donut")
+		case Failure(e) => println(s"Could not find this donut, exception: ${e.getMessage}")
+	}
+	p4.complete(Try(donutStock("glazed donut", 0)))
+	println("P4 = " + p4)
 }

@@ -19,7 +19,7 @@ object Wait {
 		while(!future.isCompleted){
 			println(s"Slept $count times")
 
-			Thread.sleep(10)
+			Thread.sleep(100)
 			count += 1
 		}
 
