@@ -23,13 +23,14 @@ object Wait {
 			count += 1
 		}
 
-		future.onComplete {
+		//help don't know why: this isn't printing!!??
+		/*future.onComplete {
 			case Success(_) => println(future)
 			case Failure(_) => println(future)
 			//case s@Success(_) => println(s"Future($s)")
 			//case f@Failure(_) => println(s"Future($f)")
-		}
-		//println(future)
+		}*/
+		println(future)
 
 		future
 	}

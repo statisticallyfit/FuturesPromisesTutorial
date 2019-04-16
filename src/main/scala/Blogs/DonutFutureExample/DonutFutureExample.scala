@@ -245,9 +245,8 @@ object SequenceFutureOption extends App {
 
 	// Call future sequence to run the future operations in parllel
 	val seq: Future[List[Any]] = Future.sequence(futureOperations)
-	Wait.hangOn(seq) //wait for future that is sequence
+	Wait.hangOnS(seq) //wait for future that is sequence
 
-	println(seq)
 
 	seq.onComplete {
 		case Success(results) => println(s"Results $results")
@@ -299,14 +298,8 @@ object TraverseFutureOption extends App {
 	val trav: Future[List[Int]] = Future.traverse(futureOperations){ optionFuture =>
 		optionFuture.map(optionDonut => from(optionDonut))
 	}
-	Wait.hangOn(trav) //why isn't the hangOnS printing part not working?
+	Wait.hangOnS(trav) //why isn't the hangOnS printing part not working?
 
-	println(trav)
-
-	trav.onComplete {
-		case Success(results) => println(s"Results $results")
-		case Failure(e) => println(s"Error processing, ${e.getMessage}")
-	}
 }
 
 
@@ -332,7 +325,7 @@ object FoldLeftFutureOption extends App {
 		op match {
 			case Some(d) => d match {
 				case Donut(_, q) => q
-				case _ => 0 //failsafe 2
+				case n:Int => n
 			}
 			case None => 0
 			case _ => 0 //the "any" case, failsafe 1
@@ -350,16 +343,128 @@ object FoldLeftFutureOption extends App {
 	futureOperations.map(f => Wait.hangOn(f))
 
 
-	val foldleft = Future.foldLeft(futureOperations)(0)(
+	val foldleft: Future[Int] = Future.foldLeft(futureOperations)(0)(
 		(accSum, optionDonut) => accSum + from(optionDonut)
 	)
+	Wait.hangOnS(foldleft)
 
-	Wait.hangOn(foldleft) //why isn't the hangOnS printing part not working?
 
-	println(foldleft)
+	//note the difference: cannot provide default value for reduceleft so the acc value
+	// becomes Some(int) and the list type is always just Some(donut(int))
+	val reduceleft: Future[Any] = Future.reduceLeft(futureOperations) {
+		(accOpt, donutOpt) =>
+			Some(from(accOpt) + from(donutOpt))
+	}
+	Wait.hangOnS(reduceleft)
 
-	foldleft.onComplete {
+	/*foldleft.onComplete {
 		case Success(results) => println(s"Results $results")
 		case Failure(e) => println(s"Error processing, ${e.getMessage}")
+	}*/
+
+}
+
+
+
+
+// Fire a bunch of futures and continue processing as soon as you have the first result
+// from EITHER of them
+
+//Do foldleft asynchronously from left to right
+object FirstCompletedOfFutureOption extends App {
+
+	import DonutFutureExample._
+
+	def donutStock(donutName: String, count: Int ): Future[Option[Donut]] = Future {
+		//long running database operation
+		Thread.sleep(100)
+		println("- checking donut stock ... sleep for a bit")
+
+		count match {
+			case 0 => None
+			case n => Some(Donut(donutName, n))
+		}
 	}
+
+	def from(op: Any): Int = {
+		op match {
+			case Some(d) => d match {
+				case Donut(_, q) => q
+				case n:Int => n
+			}
+			case None => 0
+			case _ => 0 //the "any" case, failsafe 1
+		}
+	}
+
+
+
+	val futureOperations: List[Future[Any]] = List(
+		donutStock("strawberry vanilla donut", 4),
+		donutStock("glazed donut", 10),
+		donutStock("sprinkles donut", 1),
+		donutStock("chocolate donut", 2)
+	)
+	futureOperations.map(f => Wait.hangOn(f))
+
+
+	val first = Future.firstCompletedOf(futureOperations)
+	Wait.hangOnS(first)
+
+}
+
+
+
+
+// Zip combines results of two future operations into single tuple
+// New future's type will be a tuple holding the two other return types
+
+//Do foldleft asynchronously from left to right
+object ZipFutureOption extends App {
+
+	import DonutFutureExample._
+
+	def donutStock(donutName: String, count: Int ): Future[Option[Donut]] = Future {
+		//long running database operation
+		Thread.sleep(100)
+		println("- checking donut stock ... sleep for a bit")
+
+		count match {
+			case 0 => None
+			case n => Some(Donut(donutName, n))
+		}
+	}
+
+	def from(future: Future[Option[Donut]]): Int = {
+		var qtyFromFuture = 0
+
+		//help why does onComplete never work???
+		/*future.onComplete {
+			case Success(Some(Donut(_, q))) => {
+				qtyFromFuture = q
+			}
+			case _ => 0
+		}*/
+		//help why doesn't this work?
+		if(future.isCompleted){
+			future.onComplete {
+				case Success(Some(Donut(_, q))) => {
+					qtyFromFuture = q
+				}
+				case _ => 0
+			}
+		}
+		qtyFromFuture
+	}
+
+	def donutPrice(d: Future[Option[Donut]]): Future[Double] = Future.successful(3.25 * from(d))
+
+	val futureDonut: Future[Option[Donut]] = donutStock("sprinkles donut", 4)
+	Wait.hangOnS(futureDonut)
+
+	val futurePrice: Future[Double] = donutPrice(futureDonut)
+	Wait.hangOnS(futurePrice)
+
+	val donutAndPriceOperation = futureDonut zip futurePrice
+	Wait.hangOnS(donutAndPriceOperation)
 }
